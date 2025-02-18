@@ -1,3 +1,3 @@
 #!/bin/bash
-docker build -t smartian-artifact -f Dockerfile .
+docker build -t scfuzz-artifact -f Dockerfile .
 
