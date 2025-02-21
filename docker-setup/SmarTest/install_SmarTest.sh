@@ -42,6 +42,7 @@ cd /home/test/tools/SmarTest
 git init
 git remote add origin https://github.com/kupl/VeriSmart-public.git
 git pull origin master --allow-unrelated-histories
+git checkout 36d191eca5e82e52297ed78b2cf8ff2ce509f7d8
 patch -p1 < /home/test/tools/SmarTest/SmarTest.patch 
 chmod +x build
 eval $(opam env)
