@@ -19,7 +19,7 @@ RUN apt-get update && \
       python-pip-whl libleveldb-dev python3-setuptools \
       python3-dev pandoc python3-venv \
       libgmp-dev libbz2-dev libreadline-dev libsecp256k1-dev locales-all
-RUN curl -sL https://deb.nodesource.com/setup_12.x | bash -
+RUN curl -sL https://deb.nodesource.com/setup_16.x | bash -
 RUN apt-get -yy install nodejs
 RUN locale-gen en_US.UTF-8
 RUN python3 -m pip install -U pip
@@ -30,6 +30,9 @@ RUN wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-p
     apt-get update && apt-get -yy install dotnet-sdk-8.0 && \
     rm -f packages-microsoft-prod.deb
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
+
+# Install truffle, web3, ganache-cli
+RUN npm install -g truffle web3 ganache-cli
 
 # Install opam
 RUN add-apt-repository ppa:avsm/ppa && \
@@ -69,6 +72,17 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US.en
 ENV LC_ALL=en_US.UTF-8
 RUN /home/test/tools/mythril/install_mythril.sh
+
+# # Install rlf
+COPY --chown=test:test ./docker-setup/rlf/ /home/test/tools/rlf/
+RUN cd /home/test/tools/rlf && \
+    wget https://dl.google.com/go/go1.10.4.linux-amd64.tar.gz && \
+    tar -xvf go1.10.4.linux-amd64.tar.gz && \
+    sudo cp -r /home/test/tools/rlf/go /usr/lib/go-1.10
+ENV GOPATH=/home/test/tools/rlf/go
+ENV GOROOT=/usr/lib/go-1.10
+ENV PATH=$PATH:$GOPATH/bin:$GOROOT/bin
+RUN /home/test/tools/rlf/install_rlf.sh
 
 # Install Smartian
 RUN cd /home/test/tools/ && \

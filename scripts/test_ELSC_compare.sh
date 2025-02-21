@@ -14,6 +14,7 @@ if ls $OUTDIR/$EXP_NAME 1> /dev/null 2>&1; then
     exit 1
 fi
 
-# Run smartian, SmarTest.
+# Run smartian, SmarTest, and rlf.
 python $SCRIPTDIR/run_experiment.py B-ELSC smartian 3600 $1 $OUTDIR $EXP_NAME
 python $SCRIPTDIR/run_experiment.py B-ELSC SmarTest 3600 $1 $OUTDIR $EXP_NAME
+python $SCRIPTDIR/run_experiment.py B-ELSC rlf 3600 $1 $OUTDIR $EXP_NAME

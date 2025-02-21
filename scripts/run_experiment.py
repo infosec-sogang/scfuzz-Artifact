@@ -6,7 +6,7 @@ from common import BASE_DIR, BENCHMARK_DIR
 IMAGE_NAME = "scfuzz-artifact"
 MAX_INSTANCE_NUM = 60
 AVAILABLE_BENCHMARKS = ["B-IO", "B-ELSC"]
-SUPPORTED_TOOLS = ["smartian", "sFuzz", "mythril", "SmarTest"]
+SUPPORTED_TOOLS = ["smartian", "sFuzz", "mythril", "SmarTest", "rlf"]
 WORKQUEUE = queue.Queue()
 lock = threading.Lock()
 
