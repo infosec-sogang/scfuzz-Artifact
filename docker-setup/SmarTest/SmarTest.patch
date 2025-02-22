@@ -1,8 +1,8 @@
 diff --git a/src/exploit/exploit.ml b/src/exploit/exploit.ml
-index b51d77f..502f8dd 100644
+index b51d77f..c214913 100644
 --- a/src/exploit/exploit.ml
 +++ b/src/exploit/exploit.ml
-@@ -93,14 +93,20 @@ let rec work : Global.t -> TypeRank.t -> string BatSet.t -> count_maps ->
+@@ -93,14 +93,28 @@ let rec work : Global.t -> TypeRank.t -> string BatSet.t -> count_maps ->
      let workset = Workset.remove_min workset in
      let (state,queries) = exec_transactions global tseq in
      let qmap = inspect_queries global tseq queries qmap in
@@ -15,8 +15,16 @@ index b51d77f..502f8dd 100644
 -    let workset = List.fold_left Workset.add workset nexts in
 -    work global rank dict counts paths explored workset qmap
 +    let vul_qs = QMap.bindings qmap in
-+    let vul_found = List.filter (fun ((kind,loc,_), (stat,_,_,_,_,_,_,_,_)) -> stat = Disproven && List.mem (to_string_kind_simple kind,loc) !blst) vul_qs in
-+    if List.length vul_found > 0 then
++    let targetBugsIO = List.filter (fun (kind,_) -> kind = "IO") !targetBugs in
++    let targetBugsIO = List.map (fun (kind,loc) -> (kind, int_of_string loc)) targetBugsIO in
++    let targetBugsOthers = List.filter (fun (kind,_) -> kind <> "IO") !targetBugs in
++    let foundKinds = ref BugSet.empty in
++    let _ = List.iter (fun ((kind,_,_), (stat,_,_,_,_,_,_,_,_)) -> if stat = Disproven then foundKinds := BugSet.add (to_string_kind_simple kind) !foundKinds) vul_qs in
++    let last_tx = BatList.last tseq in
++    let last_tx_fname = get_fname (FuncMap.find (Path.get_fkey (get_path last_tx)) global.fmap) in
++    let vul_found_IO = List.filter (fun ((kind,loc,_), (stat,_,_,_,_,_,_,_,_)) -> stat = Disproven && List.mem (to_string_kind_simple kind,loc) targetBugsIO) vul_qs in
++    let vul_found_Others = List.filter (fun ((kind,loc,_), (stat,_,_,_,_,_,_,_,_)) -> stat = Disproven && List.mem (to_string_kind_simple kind, last_tx_fname) targetBugsOthers) vul_qs in
++    if List.length vul_found_IO > 0 || (List.length vul_found_Others > 0 && (BugSet.equal !foundKinds !bugKinds))then
 +      let _ = earlyTerminated := true in
 +      qmap
 +    else
@@ -32,7 +40,7 @@ index b51d77f..502f8dd 100644
  let scan_node : Global.t -> cfg -> Path.t -> Node.t -> query list
  = fun global g path node -> CollectQuery.collect global g VTrue path node
 diff --git a/src/exploit/reportExploit.ml b/src/exploit/reportExploit.ml
-index ee44c23..ce9f090 100644
+index ee44c23..d2a35ab 100644
 --- a/src/exploit/reportExploit.ml
 +++ b/src/exploit/reportExploit.ml
 @@ -151,7 +151,7 @@ let retrieve_i : int -> Z3.Model.model -> param list -> (var * string list) list
@@ -53,7 +61,7 @@ index ee44c23..ce9f090 100644
  
  
  let retrieve : Global.t -> transaction list -> Z3.Model.model -> int ->
-@@ -384,7 +384,9 @@ let report ~pathnum : Global.t -> QMap.t -> string list -> unit
+@@ -384,19 +384,28 @@ let report ~pathnum : Global.t -> QMap.t -> string list -> unit
    let vul_found = List.filter (fun ((kind,_,_),(stat,_,_,_,_,_,_,_,_)) -> stat = Disproven) vul_qs in
    print_endline "";
    report_interface_deviation ();
@@ -62,26 +70,51 @@ index ee44c23..ce9f090 100644
 +    print_endline "=== Report (early termination) ==="
 +  else print_endline "=== Report ===";
    List.iteri (fun i ((kind,loc,_) as src, (stat, tseq, mop, vc, sc_src, attacker_src, stolen_eth_src, time, validated)) ->
-     let s1 = "[" ^ string_of_int (i+1) ^ "]" ^ " " ^ "[" ^ Query.to_string_kind_simple kind ^ "]" ^ " " in
-     let s2 = Query.to_string_src src ^ " : " ^ to_string_status stat ^ (if not (stat = UnProven) then ", " ^ string_of_float time ^ "s" else "") in
+-    let s1 = "[" ^ string_of_int (i+1) ^ "]" ^ " " ^ "[" ^ Query.to_string_kind_simple kind ^ "]" ^ " " in
+-    let s2 = Query.to_string_src src ^ " : " ^ to_string_status stat ^ (if not (stat = UnProven) then ", " ^ string_of_float time ^ "s" else "") in
+-    print_endline (s1 ^ s2);
+     if stat = Disproven then
++      let last_tx = BatList.last tseq in
++      let last_tx_fname = get_fname (FuncMap.find (Path.get_fkey (get_path last_tx)) global.fmap) in
++      let s1 = "[" ^ string_of_int (i+1) ^ "]" ^ " " ^ "[" ^ Query.to_string_kind_simple kind ^ "]" ^ " " in
++      let s2 = Query.to_string_src src ^ ", {" ^ last_tx_fname ^ "} : " ^ to_string_status stat ^ (if not (stat = UnProven) then ", " ^ string_of_float time ^ "s" else "") in
++      print_endline (s1 ^ s2);
+       let attacks,json = retrieve global tseq (remove_some mop) loc in
++      let (_,fname,_,_,_) = BatList.last attacks in
+       let trusted = get_trusted_account global tseq (remove_some mop) in
+       let invested = get_invested global tseq (remove_some mop) in
+       let _ = mk_tx_output (i+1) kind loc (remove_some mop) vc trusted invested attacks json in
+       let _ = mk_test_sol global kind (i+1) lines loc sc_src attacker_src stolen_eth_src in
+       print_endline (to_string_attacks attacks)
+-    else print_endline ""
++    else
++      let s1 = "[" ^ string_of_int (i+1) ^ "]" ^ " " ^ "[" ^ Query.to_string_kind_simple kind ^ "]" ^ " " in
++      let s2 = Query.to_string_src src ^ " : " ^ to_string_status stat ^ (if not (stat = UnProven) then ", " ^ string_of_float time ^ "s" else "") in
++      print_endline (s1 ^ s2);
++      print_endline ""
+   ) vul_qs;
+   print_endline "=== Statistics ===";
+   print_endline ("# Iter                 : " ^ string_of_int !iter);
 diff --git a/src/util/options.ml b/src/util/options.ml
-index 83a0fc7..c230884 100644
+index 83a0fc7..009f2b8 100644
 --- a/src/util/options.ml
 +++ b/src/util/options.ml
-@@ -46,6 +46,12 @@ let refined_vcgen = ref false
+@@ -46,6 +46,14 @@ let refined_vcgen = ref false
  
  let outdir = ref ""
  
-+module BugMap = Map.Make(String)
++module BugSet = Set.Make(String)
 +
-+let blst: (string * int) list ref = ref [] (* [(IO,124); (IO,155)] *)
++let bugKinds = ref BugSet.empty
++
++let targetBugs: (string * string) list ref = ref [] (* [(ETHER_LEAK, "kill"), (IO, 124/127)]*)
 +
 +let earlyTerminated = ref false
 +
  let activate_detector s =
    match s with
    | "all" -> (* all but invalid assignment, reg checking *)
-@@ -86,6 +92,19 @@ let set_mode s =
+@@ -86,6 +94,20 @@ let set_mode s =
    | "verify" | "exploit" -> mode:=s
    | _ -> invalid_arg "improper arguments for run mode. Should be one of {verify, exploit}"
  
@@ -91,21 +124,22 @@ index 83a0fc7..c230884 100644
 +      let l = Str.split (Str.regexp ":") x in (* [IO; 124/155] *)
 +      match l with
 +      | [bug; loc] ->
++        bugKinds := BugSet.add bug !bugKinds;
 +        let locs = Str.split (Str.regexp "/") loc in
-+        let locs = List.map (fun loc -> int_of_string loc) locs in (* int list *)
-+        List.iter (fun loc -> blst := (bug, loc)::!blst) locs
++        List.iter (fun loc -> targetBugs := (bug, loc)::!targetBugs) locs
 +      | _ -> invalid_arg ("invalid bug format: " ^ x)
 +  ) l;
-+  !blst
++  !targetBugs
++  
 +
  let options =
    [
      ("-input", Arg.String (fun s -> inputfile := s), "inputfile containing your examples");
-@@ -122,4 +141,7 @@ let options =
+@@ -122,4 +144,7 @@ let options =
      ("-enforce_init_eth", Arg.Set enforce_init_eth, "do not modify contract ether values (default: false)");
      ("-refined_vcgen", Arg.Set refined_vcgen, "generate vcs that consider normal terminations of transactions.");
      ("-outdir", Arg.String (fun s -> outdir:= s), "directory where analysis outputs are stored");
-+    ("-target_bug", Arg.String (fun s -> blst := parse_bugs s), "Target bugs to detect (pairs of bug type and instruction address)\n\
-+                                                                IO(Interger Over/Underflow), DZ(Division-by-Zero), ASSERT(Assertion Violation), ETH_LEAK(Ether-Leaking), KILL(Suicidal)\n\
++    ("-target_bug", Arg.String (fun s -> targetBugs := parse_bugs s), "Target bugs to detect (pairs of bug type and instruction address)\n\
++                                                                IO(Interger Over/Underflow), DZ(Division-by-Zero), ASSERT(Assertion Violation), ETH_LEAK(Ether-Leaking), KA(Suicidal)\n\
 +                                                                 e.g., IO:124/155,DZ:132)");
    ]
